@@ -2,8 +2,6 @@ defmodule Bank1API.User do
 	@enforce_keys [:username, :first_name, :last_name, :password]
     defstruct [:username, :first_name, :last_name, :password, accounts: [], security_status: "Nope", secret_answer: "orange"]
 
-    # Banks is a list of BankInfo structs
-
     defimpl Jason.Encoder do
       @impl Jason.Encoder 
       def encode(value, opts) do

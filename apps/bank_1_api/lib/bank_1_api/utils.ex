@@ -60,6 +60,7 @@ defmodule Bank1API.Utils do
         KV.Bucket.put(transactions, account_number, trans_list)
     end
 
+    # Limit number of accounts per user
     def can_create_account(username, password) do
         count = number_of_accounts(username)
         
@@ -73,6 +74,7 @@ defmodule Bank1API.Utils do
         KV.Bucket.get(account_counter, username) 
     end
 
+    # Heuristic for generating account numbers
     def generate_account_number do
         Ecto.UUID.generate
     end

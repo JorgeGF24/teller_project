@@ -2,8 +2,6 @@ defmodule Bank1API.Transaction do
 	@enforce_keys [:account_id, :username, :beneficiary_name, :amount, :date]
     defstruct [:account_id, :username, :beneficiary_name, :amount, :date, detail: "", currency: "GBP"]
 
-    # Banks is a list of BankInfo structs
-
     defimpl Jason.Encoder do
       @impl Jason.Encoder 
       def encode(value, opts) do

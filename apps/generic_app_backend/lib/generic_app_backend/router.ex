@@ -28,7 +28,7 @@ defmodule GenericAppBackend.Router do
 
     put "/" do
         :timer.sleep(5000)
-        send_resp(conn, 200, "GenericApp: OK")
+        send_resp(conn, 200, "GenericApp: slow endpoint -> OK")
     end
 
     # Endpoint for creating a new user in our generic App
@@ -107,13 +107,9 @@ defmodule GenericAppBackend.Router do
         if auth do
             case bank_name do
                 "bank1" ->
-                    path = Plug.Conn.request_url(conn) |>
-                        String.slice(0..-(String.length(conn.request_path)+1))
-                    path = path <> "/bank1/#{user.username}/accounts"
-                        |> IO.inspect
+                    path = change_path(conn, "/bank1/#{user.username}/accounts")
 
-                    token = get_token(conn, user, "bank1") |> IO.inspect
-                    {:ok, response} = HTTPoison.get path, [], ["Authorization": "Bearer #{token}"]
+                    {:ok, response} = HTTPoison.put path, [], ["Authorization": "Bearer #{get_token(conn, user, "bank1")}"]
                     
                     conn
                         |> put_resp_content_type("application/json")
@@ -128,8 +124,7 @@ defmodule GenericAppBackend.Router do
         end
     end
 
-    # Should be get
-    # GET ACCOUNT TRANSACTIONS FROM BANK ACCOUNT
+    # ACCOUNT TRANSACTIONS FROM BANK ACCOUNT. Get requests somehow remove information from body, so had to call put.
     put "/transactions/:bank_name" do
         # Extracts username from bearer token
         {auth, user} = authenticated?(conn, "", true)
@@ -138,9 +133,7 @@ defmodule GenericAppBackend.Router do
                 if auth do
                     case bank_name do
                         "bank1" ->
-                            path = Plug.Conn.request_url(conn) |>
-                                String.slice(0..-(String.length(conn.request_path)+1))
-                            path = path <> "/bank1/transactions"
+                            path = change_path(conn, "/bank1/transactions")
 
                             {:ok, body} = Jason.encode(conn.body_params)
 
@@ -162,6 +155,7 @@ defmodule GenericAppBackend.Router do
 
     end
 
+    # Personalized endpoint targets second steo of authorization for Bank1. Other banks will have other requirements
     put "/enroll/bank1/step2" do
         case conn.body_params do
             %{"security_answer" => _, "username" => username, "token" => _} ->
@@ -174,6 +168,7 @@ defmodule GenericAppBackend.Router do
         end
     end
 
+    # First step in enrolling a new bank.
     put "/enroll/:bank_name" do
         case conn.body_params do
             %{"username" => username, "password" => _} ->
@@ -199,7 +194,7 @@ defmodule GenericAppBackend.Router do
 
     # Handle Errors
     defp handle_errors(conn, error) do
-        Logger.error("[Router]: Web Request Failed:\n#{inspect(error)}")
+        Logger.error("[GenApp Router]: Request Failed:\n#{inspect(error)}")
         render_json(conn, conn.status, build_error("Something Went Wrong. See Logs."))
     end
 
@@ -220,9 +215,7 @@ defmodule GenericAppBackend.Router do
     defp enroll_bank1(conn, username) do
 
         # Do a request to the Bank1 API to check if credentials are valid
-        path = Plug.Conn.request_url(conn) |>
-            String.slice(0..-(String.length(conn.request_path)+1))
-        path = path <> "/bank1/login"
+        path = change_path(conn, "/bank1/login")
 
         {:ok, body} = Jason.encode(conn.body_params)
 
@@ -251,9 +244,7 @@ defmodule GenericAppBackend.Router do
     defp enroll_bank1_step2(conn, username) do
 
         # Do a request to the Bank1 API to check if security question is valid
-        path = Plug.Conn.request_url(conn) |>
-            String.slice(0..-(String.length(conn.request_path)+1))
-        path = path <> "/bank1/security"
+        path = change_path(conn, "/bank1/security")
 
         {:ok, body} = Jason.encode(conn.body_params)
 
@@ -308,5 +299,11 @@ defmodule GenericAppBackend.Router do
 
     defp get_token(conn, user, bank_name) do
         conn.body_params["token"] || user.security_tokens[bank_name]
+    end
+
+    defp change_path(conn, new_request) do
+        path = Plug.Conn.request_url(conn) |>
+            String.slice(0..-(String.length(conn.request_path)+1))
+        path <> new_request
     end
 end

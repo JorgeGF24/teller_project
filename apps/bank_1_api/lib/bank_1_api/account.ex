@@ -2,7 +2,6 @@ defmodule Bank1API.Account do
 	@enforce_keys [:account_id, :first_name, :last_name, :username]
     defstruct [:account_id, :first_name, :last_name, :username, balance: 0]
 
-    # Banks is a list of BankInfo structs
 
     defimpl Jason.Encoder do
       @impl Jason.Encoder 

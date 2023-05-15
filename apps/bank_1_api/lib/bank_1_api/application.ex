@@ -12,6 +12,7 @@ defmodule Bank1API.Application do
     KV.Registry.create(Bank1API.DB, "accounts")
     # Here we store user information such as username and password
     users_table = KV.Registry.create(Bank1API.DB, "users")
+    # Helper table counts number of accounts per user
     n_accounts_table = KV.Registry.create(Bank1API.DB, "accounts counter")
     KV.Registry.create(Bank1API.DB, "transactions")
 

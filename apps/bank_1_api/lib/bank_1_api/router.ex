@@ -6,13 +6,13 @@ defmodule Bank1API.Router do
     alias Bank1API.User
     alias Bank1API.Transaction
 
-    plug(:match)
-
     plug(Plug.Parsers,
         parsers: [:json],
-        pass: ["application/json"],
+        pass: ["*/*"],
         json_decoder: Jason
     )
+
+    plug(:match)
 
     plug(:dispatch)
 
@@ -138,7 +138,6 @@ defmodule Bank1API.Router do
                         transaction = %Transaction{account_id: account_id, beneficiary_name: beneficiary_name, username: account.username, 
                             amount: amount, detail: conn.body_params["detail"] || "", date: DateTime.utc_now}
 
-                        new_balance = account.balance - amount |> IO.inspect
                         account = %Account{account | balance: account.balance - amount}
 
                         Utils.store_account(account_id, account)
@@ -175,8 +174,7 @@ defmodule Bank1API.Router do
 
     # Gets all accounts from a specific user
     put "/:username/accounts" do
-        IO.inspect conn
-        user = Utils.get_user(username, true) |> IO.inspect
+        user = Utils.get_user(username, true)
         if authenticated?(conn, username, true) do
             {:ok, accounts} = Jason.encode(user.accounts)
 
@@ -196,7 +194,7 @@ defmodule Bank1API.Router do
         # Extract authorization token from header
         case Enum.at(Plug.Conn.get_req_header(conn,"authorization"),0) do
             nil -> 
-                IO.puts "NO HEADER"
+                IO.puts "NO HEADER AUTH"
                 false
                 
             token -> 
@@ -205,7 +203,6 @@ defmodule Bank1API.Router do
                 
                 case Guardian.decode_and_verify(token) do
                     {:ok, claims} -> 
-                        IO.inspect claims
                         # Check that username is same as bearer token's
                         {:ok, user} = Guardian.resource_from_claims(claims)
                         # A security status of Nope means user hasnt done step 1, and okay means he's passed step 2
