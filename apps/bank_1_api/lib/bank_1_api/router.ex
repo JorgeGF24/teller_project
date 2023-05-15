@@ -39,7 +39,7 @@ defmodule Bank1API.Router do
                                 account = %Account{account_id: account_id, first_name: first_name, last_name: last_name, username: username}
 
                                 user = Utils.get_user(username) || %User{username: username, first_name: first_name, last_name: last_name, password: password}
-                                user = %{user | accounts: [account_id|user.accounts] }
+                                user = %{user | accounts: [account|user.accounts] }
 
                                 Utils.store_account(account_id, account)
                                 Utils.store_user(username, user)
@@ -78,8 +78,7 @@ defmodule Bank1API.Router do
                         
                         path = Plug.Conn.request_url(conn) |>
                             String.slice(0..-(String.length(conn.request_path)+1))
-                        path = path <> "/enroll/bank1/step2" |>
-                            IO.inspect
+                        path = path <> "/enroll/bank1/step2"
 
                         user = %User{user | security_status: "xxxx"}
                         Utils.store_user(username, user)
@@ -107,6 +106,7 @@ defmodule Bank1API.Router do
 
                     if answer == user.secret_answer do
                         user = %User{user | security_status: "okay"}
+                        Utils.store_user(username, user)
 
                         {:ok, token, _claims} = Guardian.encode_and_sign(user)
 
@@ -127,16 +127,18 @@ defmodule Bank1API.Router do
         end
     end
 
+    # Depending on provided information in body has different functionalities. Amount should be a number, not a string.
     put "/transactions" do
         case conn.body_params do
+            # Creates a new transaction
             %{"account_id" => account_id, "beneficiary_name" =>beneficiary_name, "amount" => amount} when is_integer(amount) ->
                 account = Utils.get_account(account_id)
                 if account != nil do
-                    user = Utils.get_user(account.username)
-                    if authenticated?(conn, account.username, user.security_status != "Nope") do
+                    if authenticated?(conn, account.username, true) do
                         transaction = %Transaction{account_id: account_id, beneficiary_name: beneficiary_name, username: account.username, 
                             amount: amount, detail: conn.body_params["detail"] || "", date: DateTime.utc_now}
 
+                        new_balance = account.balance - amount |> IO.inspect
                         account = %Account{account | balance: account.balance - amount}
 
                         Utils.store_account(account_id, account)
@@ -150,11 +152,11 @@ defmodule Bank1API.Router do
                     send_resp(conn, 404, "Bank1: Account doesn't exist")
                 end
 
+            # Returns a list of all transactions
             %{"account_id" => account_id} ->
                 account = Utils.get_account(account_id)
                 if account != nil do
-                    user = Utils.get_user(account.username)
-                    if authenticated?(conn, account.username, user.security_status != "Nope") do
+                    if authenticated?(conn, account.username, true) do
                         {:ok, trans_list} = Jason.encode(Utils.get_transactions(account_id))
 
                         conn
@@ -172,15 +174,17 @@ defmodule Bank1API.Router do
     end
 
     # Gets all accounts from a specific user
-    get "/:username/accounts" do
-        user = Utils.get_user(username, true)
+    put "/:username/accounts" do
+        IO.inspect conn
+        user = Utils.get_user(username, true) |> IO.inspect
         if authenticated?(conn, username, true) do
             {:ok, accounts} = Jason.encode(user.accounts)
 
             conn
                 |> put_resp_content_type("application/json")
                 |> send_resp(200, accounts)
-
+        else
+            send_resp(conn, 403, "Bank1: Not authorized to access")
         end
     end
 
@@ -191,13 +195,17 @@ defmodule Bank1API.Router do
     defp authenticated?(conn, username, extra_security \\ false) do
         # Extract authorization token from header
         case Enum.at(Plug.Conn.get_req_header(conn,"authorization"),0) do
-            nil -> false
+            nil -> 
+                IO.puts "NO HEADER"
+                false
+                
             token -> 
                 # Remove "Bearer " from token string
                 token = String.slice(token, 7..-1)
                 
                 case Guardian.decode_and_verify(token) do
                     {:ok, claims} -> 
+                        IO.inspect claims
                         # Check that username is same as bearer token's
                         {:ok, user} = Guardian.resource_from_claims(claims)
                         # A security status of Nope means user hasnt done step 1, and okay means he's passed step 2
@@ -210,7 +218,6 @@ defmodule Bank1API.Router do
 
 
     match _ do
-        IO.puts "HEY"
         send_resp(conn, 404, "Bank1: Not Found")
     end
 end

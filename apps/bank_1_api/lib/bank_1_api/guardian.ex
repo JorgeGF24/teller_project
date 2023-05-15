@@ -18,7 +18,7 @@ defmodule Bank1API.Guardian do
             String.slice(6..-1)
             
         username = String.slice(user_security_status, 0..-5)
-        security_status = String.slice(user_security_status, -5..-1)
+        
         resource = Bank1API.Utils.get_user(username)
 
         {:ok,  resource}

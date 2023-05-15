@@ -17,7 +17,7 @@ defmodule Bank1API.Application do
 
     # We define a test user as an example. More can be created by performing HTTP calls to the Bank1API server.
     password = Safetybox.encrypt("test")
-    test_user = %Bank1API.User{username: "test_user", first_name: "test", last_name: "user", secret_answer: "purple", password: password, 
+    test_user = %Bank1API.User{username: "test_user", first_name: "test", last_name: "user", secret_answer: "orange", password: password, 
       security_status: "okay"}
 
     KV.Bucket.put(users_table, "test_user", test_user)

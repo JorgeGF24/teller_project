@@ -9,13 +9,13 @@ defmodule GenericAppBackend.Router do
 
     plug(Plug.Logger)
 
-    plug(:match)
-
     plug(Plug.Parsers,
         parsers: [:json],
         pass: ["*/*"],
         json_decoder: Jason
     )
+
+    plug(:match)
 
     plug(:dispatch)
 
@@ -62,6 +62,106 @@ defmodule GenericAppBackend.Router do
         end
     end
 
+    post "/login" do
+        case conn.body_params do
+            %{"username" => username, "password" => password} ->
+                if Utils.get_user(username) == nil do
+                    send_resp(conn, 403, "GenericApp: Credentials are not valid")
+                else
+                    user = Utils.get_user(username)
+
+                    if Safetybox.is_decrypted(password, user.password) do
+                        {:ok, token, _claims} = Guardian.encode_and_sign(%{username: username, institution: "GenericApp"})
+
+                        {:ok, body} = Jason.encode(%{"message"=>"GenericApp: Login succesful for user #{username}", "status"=>200, "access"=>token})
+                        
+                        conn
+                            |> put_resp_content_type("application/json")
+                            |> send_resp(200, body)
+                    else 
+                        send_resp(conn, 403, "GenericApp: Credentials are not valid")
+                    end
+                end
+            _ -> send_resp(conn, 400, "GenericApp: Request does not contain all required fields (username, password)")
+        end
+    end
+
+    # GET USER DETAIL
+    get "/users/:username" do
+        {auth, user} = authenticated?(conn, username, true)
+        if auth do
+            {:ok, body} = Jason.encode(user)
+
+            conn
+                |> put_resp_content_type("application/json")
+                |> send_resp(200, body)
+        else 
+            send_resp(conn, 403, "GenericApp: Not authorized")
+        end
+    end
+
+    # GET USER ACCOUNTS FROM A BANK
+    get "/accounts/:bank_name" do
+        # Extracts username from bearer token
+        {auth, user} = authenticated?(conn, "", true)
+        if auth do
+            case bank_name do
+                "bank1" ->
+                    path = Plug.Conn.request_url(conn) |>
+                        String.slice(0..-(String.length(conn.request_path)+1))
+                    path = path <> "/bank1/#{user.username}/accounts"
+                        |> IO.inspect
+
+                    token = get_token(conn, user, "bank1") |> IO.inspect
+                    {:ok, response} = HTTPoison.get path, [], ["Authorization": "Bearer #{token}"]
+                    
+                    conn
+                        |> put_resp_content_type("application/json")
+                        |> send_resp(response.status_code, response.body)
+
+                "bank2" ->
+                    send_resp(conn, 404, "GenericApp: Not implemented yet")
+                _ -> send_resp(conn, 500, "GenericApp: Unknown error")
+            end
+        else 
+            send_resp(conn, 403, "GenericApp: Not authorized")
+        end
+    end
+
+    # Should be get
+    # GET ACCOUNT TRANSACTIONS FROM BANK ACCOUNT
+    put "/transactions/:bank_name" do
+        # Extracts username from bearer token
+        {auth, user} = authenticated?(conn, "", true)
+        case conn.body_params do
+            %{"account_id" => _} ->
+                if auth do
+                    case bank_name do
+                        "bank1" ->
+                            path = Plug.Conn.request_url(conn) |>
+                                String.slice(0..-(String.length(conn.request_path)+1))
+                            path = path <> "/bank1/transactions"
+
+                            {:ok, body} = Jason.encode(conn.body_params)
+
+                            {:ok, response} = HTTPoison.put path, body, ["Authorization": "Bearer #{get_token(conn, user, "bank1")}","Content-Type": "application/json"]
+                            
+                            conn
+                                |> put_resp_content_type("application/json")
+                                |> send_resp(response.status_code, response.body)
+
+                        "bank2" ->
+                            send_resp(conn, 404, "GenericApp: Not implemented yet")
+                        _ -> send_resp(conn, 500, "GenericApp: Unknown error")
+                    end
+                else 
+                    send_resp(conn, 403, "GenericApp: Not authorized")
+                end
+            _ -> send_resp(conn, 400, "GenericApp: Missing fielsdsdfd account_id in body")
+        end
+
+    end
+
     put "/enroll/bank1/step2" do
         case conn.body_params do
             %{"security_answer" => _, "username" => username, "token" => _} ->
@@ -91,111 +191,6 @@ defmodule GenericAppBackend.Router do
                 end
             _ -> send_resp(conn, 400, "GenericApp: Request does not contain all required fields (username, last_name)")
         end
-    end
-
-    post "/login" do
-        case conn.body_params do
-            %{"username" => username, "password" => password} ->
-                if Utils.get_user(username) == nil do
-                    send_resp(conn, 403, "GenericApp: Credentials are not valid")
-                else
-                    user = Utils.get_user(username)
-
-                    if Safetybox.is_decrypted(password, user.password) do
-                        {:ok, token, _claims} = Guardian.encode_and_sign(%{username: username, institution: "GenericApp"})
-
-                        {:ok, body} = Jason.encode(%{"message"=>"GenericApp: Login succesful for user #{username}", "status"=>200, "access"=>token})
-                        
-                        conn
-                            |> put_resp_content_type("application/json")
-                            |> send_resp(200, body)
-                    else 
-                        send_resp(conn, 403, "GenericApp: Credentials are not valid")
-                    end
-                end
-            _ -> send_resp(conn, 400, "GenericApp: Request does not contain all required fields (username, password)")
-        end
-    end
-
-    # GET USER DETAIL
-    get "/users/:username" do
-        if authenticated?(conn, username) do
-            {:ok, body} = Jason.encode(Utils.get_user(username))
-
-            conn
-                |> put_resp_content_type("application/json")
-                |> send_resp(200, body)
-        else 
-            send_resp(conn, 403, "GenericApp: Not authorized")
-        end
-    end
-
-    # GET USER ACCOUNTS FROM A BANK
-    get "/accounts/:bank_name" do
-        # Extracts username from bearer token
-        {auth, username} = authenticated?(conn, "", true)
-        if auth do
-            case bank_name do
-                "bank1" ->
-                    path = Plug.Conn.request_url(conn) |>
-                        String.slice(0..-(String.length(conn.request_path)+1))
-                    path = path <> "/bank1/#{username}/accounts"
-
-                    user = Utils.get_user(username)
-                    {:ok, response} = HTTPoison.put path, [], ["Authorization": "Bearer #{get_token(conn, user, "bank1")}","Content-Type": "application/json"]
-                    
-                    conn
-                        |> put_resp_content_type("application/json")
-                        |> send_resp(response.status_code, response.body)
-
-                "bank2" ->
-                    send_resp(conn, 404, "GenericApp: Not implemented yet")
-                _ -> send_resp(conn, 500, "GenericApp: Unknown error")
-            end
-        else 
-            send_resp(conn, 403, "GenericApp: Not authorized")
-        end
-    end
-
-    # Should be get
-    # GET ACCOUNT TRANSACTIONS FROM BANK ACCOUNT
-    put "/transactions/:bank_name" do
-        # Extracts username from bearer token
-        {auth, username} = authenticated?(conn, "", true)
-        case conn.body_params do
-            %{"account_id" => _} ->
-                if auth do
-                    case bank_name do
-                        "bank1" ->
-                            path = Plug.Conn.request_url(conn) |>
-                                String.slice(0..-(String.length(conn.request_path)+1))
-                            path = path <> "/bank1/transactions"
-
-                            {:ok, body} = Jason.encode(conn.body_params)
-
-                            {:ok, response} = HTTPoison.put path, body, ["Authorization": "Bearer #{get_token(conn, username, "bank1")}","Content-Type": "application/json"]
-                            
-                            IO.inspect response
-                            conn
-                                |> put_resp_content_type("application/json")
-                                |> send_resp(response.status_code, response.body)
-
-                        "bank2" ->
-                            send_resp(conn, 404, "GenericApp: Not implemented yet")
-                        _ -> send_resp(conn, 500, "GenericApp: Unknown error")
-
-                    end
-                    {:ok, body} = Jason.encode(Utils.get_user(username))
-
-                    conn
-                        |> put_resp_content_type("application/json")
-                        |> send_resp(200, body)
-                else 
-                    send_resp(conn, 403, "GenericApp: Not authorized")
-                end
-            _ -> send_resp(conn, 400, "GenericApp: Missing fielsdsdfd account_id in body")
-        end
-
     end
 
     match _ do
@@ -242,7 +237,7 @@ defmodule GenericAppBackend.Router do
             {:ok, decoded_body} = Jason.decode(response.body)
 
             account = %Account{institution_name: "bank1", username: username, extra_info: %{temporary_access: decoded_body["access"]}}
-            user = %User{user | accounts: [account | user.accounts], security_tokens: %{user.security_tokens | "bank1"=>decoded_body["access"]}}
+            user = %User{user | accounts: [account | user.accounts], security_tokens: Map.put(user.security_tokens, "bank1", decoded_body["access"])}
 
             # User with new commenced bank enrollment. Save token in user's device before going onto step 2.
             Utils.store_user(username, user)
@@ -284,10 +279,10 @@ defmodule GenericAppBackend.Router do
             |> send_resp(response.status_code, response.body)
     end
 
-    defp authenticated?(conn, username, figure_out_username \\ false) do
+    defp authenticated?(conn, username, return_user \\ false) do
         # Extract authorization token from header
         case Enum.at(Plug.Conn.get_req_header(conn,"authorization"),0) do
-            nil -> if figure_out_username, do: {false, nil}, else: false
+            nil -> if return_user, do: {false, nil}, else: false
             token -> 
                 # Remove "Bearer " from token string
                 token = String.slice(token, 7..-1)
@@ -296,13 +291,13 @@ defmodule GenericAppBackend.Router do
                     {:ok, claims} -> 
                         # Check that username is same as bearer token's
                         {:ok, user} = GenericAppBackend.Guardian.resource_from_claims(claims)
-                        if figure_out_username do
-                            {user != nil, username}
+                        if return_user do
+                            {user != nil, user}
                         else
                             user != nil and username == user.username
                         end
                     _ -> 
-                        if figure_out_username, do: {false, nil}, else: false
+                        if return_user, do: {false, nil}, else: false
                 end
         end
     end
