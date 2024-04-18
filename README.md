@@ -4,6 +4,8 @@
 
 This is my implementation of what is described in https://test.teller.engineering/, part of the process of applying to a job at Teller.
 
+Teller has changed their application process since then.
+
 ## Implementation comments
 
 In order to simulate an environment close to what Teller works with, I have implemented two servers: 
